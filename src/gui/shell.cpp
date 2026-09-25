@@ -1939,6 +1939,15 @@ void Shell::dropEvent(QDropEvent *ev)
 			return;
 		}
 
+		// Focus the window under the drop position, so files open in the
+		// split they were dropped on instead of the current window
+		if (m_nvim) {
+			const QPointF dropPos{ ev->position() };
+			const int64_t row = static_cast<int64_t>(dropPos.y() / cellSize().height()) + 1;
+			const int64_t col = static_cast<int64_t>(dropPos.x() / cellSize().width()) + 1;
+			m_nvim->api0()->vim_call_function("GuiFocusWindowAt", { row, col });
+		}
+
 		openFiles(urls);
 	}
 	ev->acceptProposedAction();

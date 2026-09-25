@@ -197,6 +197,12 @@ may be provided to override the default behavior, GuiDropCustom.
 GuiDropCustomHandler should accept an arbitrary number of file paths as arguments.
 Each argument should be processed, escaped, and passed to :drop.
 
+							*GuiFocusWindowAt()*
+GuiFocusWindowAt(row, col) focuses the window in the current tabpage that
+contains the 1-based screen cell at {row}, {col}. The GUI calls this before
+|GuiDrop()| when files are dropped onto the shell, so they open in the split
+under the mouse rather than the current window.
+
 							*GuiMousehide()*
 GuiMousehide(enabled) enables mouse hiding while typing. If enabled is
 1, as soon as the user types the mouse cursor is concealed. When the

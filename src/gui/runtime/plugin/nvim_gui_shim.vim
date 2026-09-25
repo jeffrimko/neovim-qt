@@ -133,6 +133,34 @@ function GuiDrop(...)
 	endif
 endfunction
 
+" GuiFocusWindowAt(row, col) focuses the window in the current tabpage that
+" contains the 1-based screen cell (row, col). Floating windows take priority
+" over regular windows. Does nothing if no window is found at that position.
+function GuiFocusWindowAt(row, col)
+	let l:target = 0
+	for l:info in getwininfo()
+		if l:info.tabnr != tabpagenr()
+			continue
+		endif
+		" Include the status line below the window
+		let l:bottom = l:info.winrow + l:info.height
+		let l:right = l:info.wincol + l:info.width - 1
+		if a:row < l:info.winrow || a:row > l:bottom
+					\ || a:col < l:info.wincol || a:col > l:right
+			continue
+		endif
+		let l:target = l:info.winid
+		if exists('*nvim_win_get_config')
+					\ && get(nvim_win_get_config(l:info.winid), 'relative', '') !=# ''
+			break
+		endif
+	endfor
+
+	if l:target != 0 && l:target != win_getid()
+		silent! call win_gotoid(l:target)
+	endif
+endfunction
+
 function GuiName()
 	if !has('nvim-0.3')
 		return ''
