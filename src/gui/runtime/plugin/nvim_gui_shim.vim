@@ -161,6 +161,45 @@ function GuiFocusWindowAt(row, col)
 	endif
 endfunction
 
+" GuiSeparatorAt(row, col) returns the kind of draggable window separator at
+" the 1-based screen cell (row, col) in the current tabpage: 'vsep' for a
+" vertical separator, 'hsep' for a status line (or horizontal separator with
+" laststatus=3), or '' if there is none.
+function GuiSeparatorAt(row, col)
+	if &mouse ==# ''
+		return ''
+	endif
+
+	let l:lastrow = &lines - &cmdheight
+	for l:info in getwininfo()
+		if l:info.tabnr != tabpagenr()
+			continue
+		endif
+		if exists('*nvim_win_get_config')
+					\ && get(nvim_win_get_config(l:info.winid), 'relative', '') !=# ''
+			continue
+		endif
+
+		let l:bottom = l:info.winrow + get(l:info, 'winbar', 0) + l:info.height - 1
+		let l:sepcol = l:info.wincol + l:info.width
+		let l:hasvsep = l:sepcol <= &columns
+
+		" Status line below the window, including the corner next to it
+		if a:row == l:bottom + 1 && l:bottom + 1 <= l:lastrow
+					\ && a:col >= l:info.wincol
+					\ && a:col <= (l:hasvsep ? l:sepcol : l:sepcol - 1)
+			return 'hsep'
+		endif
+
+		" Vertical separator to the right of the window
+		if l:hasvsep && a:col == l:sepcol
+					\ && a:row >= l:info.winrow && a:row <= l:bottom
+			return 'vsep'
+		endif
+	endfor
+	return ''
+endfunction
+
 function GuiName()
 	if !has('nvim-0.3')
 		return ''

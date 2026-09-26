@@ -913,7 +913,7 @@ void Shell::handleBusy(bool busy)
 
 	m_neovimBusy = busy;
 
-	setCursorFromBusyState();
+	updateMouseCursor();
 	emit neovimBusyChanged(busy);
 }
 
@@ -1591,11 +1591,16 @@ void Shell::mouseClickIncrement(Qt::MouseButton bt)
 void Shell::mouseReleaseEvent(QMouseEvent *ev)
 {
 	neovimMouseEvent(ev);
+
+	// A separator drag may have ended, refresh the resize cursor
+	if (ev->buttons() == Qt::NoButton) {
+		updateHoverSeparator(m_mouse_pos);
+	}
 }
 
 void Shell::mouseMoveEvent(QMouseEvent* ev)
 {
-	setCursorFromBusyState();
+	updateMouseCursor();
 
 	QPointF eventPos{ ev->position() };
 	QPoint pos{ static_cast<int>(eventPos.x() / cellSize().width()),
@@ -1604,15 +1609,72 @@ void Shell::mouseMoveEvent(QMouseEvent* ev)
 		m_mouse_pos = pos;
 		mouseClickReset();
 		neovimMouseEvent(ev);
+
+		// Keep the resize cursor while dragging, Neovim redraws the
+		// separator under the mouse only after it has moved
+		if (ev->buttons() == Qt::NoButton) {
+			updateHoverSeparator(pos);
+		}
 	}
 }
 
-void Shell::setCursorFromBusyState() noexcept
+void Shell::leaveEvent(QEvent* ev)
 {
-	Qt::CursorShape desiredCursor{};
+	m_hoverSeparator = HoverSeparator::None;
+	m_mouse_pos = QPoint{ -1, -1 };
+	updateMouseCursor();
+	ShellWidget::leaveEvent(ev);
+}
+
+/// Asks Neovim whether the cell at pos is a draggable window separator, and
+/// updates the mouse cursor once the reply arrives.
+void Shell::updateHoverSeparator(const QPoint& pos) noexcept
+{
+	if (!m_nvim || !m_attached || !m_mouseEnabled) {
+		if (m_hoverSeparator != HoverSeparator::None) {
+			m_hoverSeparator = HoverSeparator::None;
+			updateMouseCursor();
+		}
+		return;
+	}
+
+	const int64_t row = pos.y() + 1;
+	const int64_t col = pos.x() + 1;
+	MsgpackRequest* req{ m_nvim->api0()->vim_call_function("GuiSeparatorAt", { row, col }) };
+	connect(req, &MsgpackRequest::finished, this,
+		[this, pos](quint32, quint64, const QVariant& val) noexcept
+		{
+			// The mouse moved on since the request, a newer one is pending
+			if (pos != m_mouse_pos) {
+				return;
+			}
+
+			const QByteArray kind{ val.toByteArray() };
+			if (kind == "vsep") {
+				m_hoverSeparator = HoverSeparator::Vertical;
+			}
+			else if (kind == "hsep") {
+				m_hoverSeparator = HoverSeparator::Horizontal;
+			}
+			else {
+				m_hoverSeparator = HoverSeparator::None;
+			}
+			updateMouseCursor();
+		});
+}
+
+void Shell::updateMouseCursor() noexcept
+{
+	Qt::CursorShape desiredCursor{ Qt::ArrowCursor };
 
 	if (m_neovimBusy) {
-		desiredCursor = Qt::CursorShape::WaitCursor;
+		desiredCursor = Qt::WaitCursor;
+	}
+	else if (m_hoverSeparator == HoverSeparator::Vertical) {
+		desiredCursor = Qt::SizeHorCursor;
+	}
+	else if (m_hoverSeparator == HoverSeparator::Horizontal) {
+		desiredCursor = Qt::SizeVerCursor;
 	}
 
 	if (cursor().shape() != desiredCursor) {

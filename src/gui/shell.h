@@ -198,8 +198,10 @@ protected:
 	virtual void mousePressEvent(QMouseEvent *ev) Q_DECL_OVERRIDE;
 	virtual void mouseReleaseEvent(QMouseEvent *ev) Q_DECL_OVERRIDE;
 	virtual void mouseMoveEvent(QMouseEvent *ev) Q_DECL_OVERRIDE;
+	virtual void leaveEvent(QEvent *ev) Q_DECL_OVERRIDE;
 	void bailoutIfinputBlocking() noexcept;
-	void setCursorFromBusyState() noexcept;
+	void updateMouseCursor() noexcept;
+	void updateHoverSeparator(const QPoint& pos) noexcept;
 
 	// GuiFont
 	void updateGuiFontRegisters() noexcept;
@@ -249,6 +251,9 @@ private:
 	QSize m_resize_neovim_pending;
 	QLabel* m_tooltip{ nullptr };
 	QPoint m_mouse_pos;
+	// Kind of window separator under the mouse, used for the resize cursor
+	enum class HoverSeparator { None, Vertical, Horizontal };
+	HoverSeparator m_hoverSeparator{ HoverSeparator::None };
 	// 2/3/4 mouse click tracking
 	QTimer m_mouseclick_timer;
 	uint8_t m_mouseclick_count{ 0 };
