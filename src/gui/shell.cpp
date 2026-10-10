@@ -357,6 +357,61 @@ QByteArray GetGVimInitCommand() noexcept
 	return "runtime! ginit.vim";
 }
 
+// Lua run in Neovim on attach: turns on 'title' and keeps 'titlestring' in the form
+//   Neovim - <file> [+] (<directory>) Tab-<n> Window-<n>
+// where '+' marks unsaved changes. If the user sets their own 'titlestring', it is left alone.
+static const char* GuiTitleLua() noexcept
+{
+	return R"lua(
+local group = vim.api.nvim_create_augroup('NvimQtTitle', { clear = true })
+local last = nil
+
+local function update()
+	local current = vim.o.titlestring
+	if current ~= '' and current ~= last then
+		-- The user has set their own title: stop managing it.
+		vim.api.nvim_del_augroup_by_id(group)
+		return
+	end
+
+	local buf = vim.api.nvim_get_current_buf()
+	local name = vim.api.nvim_buf_get_name(buf)
+	local buftype = vim.bo[buf].buftype
+	local file, dir
+	if name == '' then
+		file, dir = '[No Name]', vim.fn.getcwd()
+	elseif buftype == 'terminal' then
+		file, dir = '[Terminal]', vim.fn.getcwd()
+	else
+		file = vim.fn.fnamemodify(name, ':t')
+		dir = vim.fn.fnamemodify(name, ':p:h')
+	end
+
+	local title = string.format('Neovim | %s%s (%s) Tab-%d Window-%d',
+		file, vim.bo[buf].modified and ' +' or '', dir,
+		vim.fn.tabpagenr(), vim.fn.winnr())
+
+	-- '%' is special in 'titlestring', so escape it.
+	last = (title:gsub('%%', '%%%%'))
+	vim.o.title = true
+	vim.o.titlestring = last
+end
+
+local events = { 'BufEnter', 'BufFilePost', 'BufWritePost', 'BufModifiedSet',
+	'WinEnter', 'TabEnter', 'DirChanged', 'WinResized' }
+for _, ev in ipairs(events) do
+	pcall(vim.api.nvim_create_autocmd, ev, { group = group, callback = update })
+end
+-- Closing a window or tab renumbers the rest after the event fires.
+for _, ev in ipairs({ 'WinClosed', 'TabClosed' }) do
+	pcall(vim.api.nvim_create_autocmd, ev, { group = group,
+		callback = function() vim.schedule(update) end })
+end
+
+update()
+)lua";
+}
+
 void Shell::setAttached(bool attached)
 {
 	m_attached = attached;
@@ -383,6 +438,11 @@ void Shell::setAttached(bool attached)
 
 		MsgpackRequest* req_shim{ m_nvim->api0()->vim_command("runtime plugin/nvim_gui_shim.vim") };
 		connect(req_shim, &MsgpackRequest::error, this, &Shell::handleShimError);
+
+		// Show the active buffer, tab and window in the window title.
+		if (auto api7 = m_nvim->api7()) {
+			api7->nvim_exec_lua(GuiTitleLua(), {});
+		}
 
 		MsgpackRequest* req_ginit{ m_nvim->api0()->vim_command(GetGVimInitCommand()) };
 		connect(req_ginit, &MsgpackRequest::error, this, &Shell::handleGinitError);
